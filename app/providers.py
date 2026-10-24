@@ -56,16 +56,16 @@ class CloudflareWorkersAIProvider(InferenceProvider):
         except httpx.HTTPStatusError as exc:
             message = "Inference provider quota/rate limit reached" if exc.response.status_code == 429 else f"Inference provider returned HTTP {exc.response.status_code}"
             error = {"error": {"message": message, "type": "provider_error", "code": exc.response.status_code}}
-            yield f"data: {json.dumps(error)}\\n\\n".encode()
-            yield b"data: [DONE]\\n\\n"
+            yield f"data: {json.dumps(error)}\n\n".encode()
+            yield b"data: [DONE]\n\n"
         except httpx.TimeoutException:
             error = {"error": {"message": "Inference provider timed out", "type": "timeout_error"}}
-            yield f"data: {json.dumps(error)}\\n\\n".encode()
-            yield b"data: [DONE]\\n\\n"
+            yield f"data: {json.dumps(error)}\n\n".encode()
+            yield b"data: [DONE]\n\n"
         except httpx.HTTPError:
             error = {"error": {"message": "Could not reach inference provider", "type": "provider_connection_error"}}
-            yield f"data: {json.dumps(error)}\\n\\n".encode()
-            yield b"data: [DONE]\\n\\n"
+            yield f"data: {json.dumps(error)}\n\n".encode()
+            yield b"data: [DONE]\n\n"
 
     async def list_models(self) -> list[dict[str, Any]]:
         return [{"id": self.model, "object": "model", "owned_by": "cloudflare-workers-ai"}]

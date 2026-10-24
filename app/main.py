@@ -59,7 +59,10 @@ async def models() -> dict[str, Any]:
 async def chat_completions(body: ChatCompletionRequest):
     payload = body.model_dump()
     payload["messages"] = [m.model_dump() for m in body.messages]
-    provider = get_provider()
+    try:
+        provider = get_provider()
+    except KeyError as exc:
+        raise HTTPException(status_code=503, detail=f"Missing provider configuration: {exc.args[0]}")
 
     if body.stream:
         if not getattr(provider, "supports_streaming", False):

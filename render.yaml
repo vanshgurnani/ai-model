@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: llama-api-gateway
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: INFERENCE_PROVIDER
+        value: cloudflare
+      - key: PUBLIC_MODEL_NAME
+        value: llama-3.2-3b-instruct
+      - key: CLOUDFLARE_MODEL
+        value: "@cf/meta/llama-3.2-3b-instruct"
+      - key: MAX_REQUESTS_PER_MINUTE
+        value: "20"
+      - key: MAX_OUTPUT_TOKENS
+        value: "1024"
+      - key: APP_API_KEY
+        generateValue: true
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false

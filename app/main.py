@@ -3,6 +3,7 @@ from collections import defaultdict, deque
 from typing import Any
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from app.providers import get_provider
 
@@ -55,11 +56,25 @@ async def models() -> dict[str, Any]:
     return {"object": "list", "data": await get_provider().list_models()}
 
 @app.post("/v1/chat/completions", dependencies=[Depends(require_api_key), Depends(rate_limit)])
-async def chat_completions(body: ChatCompletionRequest) -> dict[str, Any]:
-    if body.stream: raise HTTPException(status_code=400, detail="Streaming is not supported; set stream=false")
+async def chat_completions(body: ChatCompletionRequest):
     payload = body.model_dump()
     payload["messages"] = [m.model_dump() for m in body.messages]
-    try: return await get_provider().chat(payload)
+    provider = get_provider()
+
+    if body.stream:
+        if not getattr(provider, "supports_streaming", False):
+            raise HTTPException(status_code=501, detail="Streaming is not supported by the configured inference provider")
+        return StreamingResponse(
+            provider.stream_chat(payload),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    try: return await provider.chat(payload)
     except httpx.HTTPStatusError as exc:
         if exc.response.status_code == 429: raise HTTPException(status_code=429, detail="Inference provider quota/rate limit reached")
         raise HTTPException(status_code=502, detail=f"Inference provider returned HTTP {exc.response.status_code}")

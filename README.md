@@ -8,7 +8,8 @@ FastAPI gateway for Llama 3.2 inference. **Render hosts the API gateway; Cloudfl
 - Bearer API-key authentication
 - Basic in-memory per-IP rate limiting
 - Provider abstraction: Cloudflare Workers AI now, Ollama later
-- Non-streaming chat completions
+- OpenAI-compatible streaming chat completions via Server-Sent Events (SSE)
+- Non-streaming JSON chat completions
 
 ## Deploy on Render Free
 1. Create a Cloudflare account and enable Workers AI.
@@ -37,6 +38,17 @@ curl https://YOUR-SERVICE.onrender.com/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -d '{"model":"llama-3.2-3b-instruct","messages":[{"role":"user","content":"Explain REST APIs simply"}],"max_tokens":200,"stream":false}'
 ```
+
+Streaming chat (Cloudflare Workers AI):
+
+```bash
+curl -N https://YOUR-SERVICE.onrender.com/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_APP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"llama-3.2-3b-instruct","messages":[{"role":"user","content":"Explain streaming APIs"}],"max_tokens":200,"stream":true}'
+```
+
+The streaming endpoint returns OpenAI-style SSE chunks followed by `data: [DONE]`. Use `curl -N` to display chunks as they arrive. Streaming is currently supported by the Cloudflare provider; Ollama remains non-streaming and returns HTTP 501 for `stream:true`.
 
 Swagger UI: `https://YOUR-SERVICE.onrender.com/docs`.
 

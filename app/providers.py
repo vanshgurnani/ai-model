@@ -1,15 +1,21 @@
 import os
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, AsyncIterator
 import httpx
 
 class InferenceProvider(ABC):
+    supports_streaming = False
+
+    async def stream_chat(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
+        raise NotImplementedError("Streaming is not supported by this provider")
+
     @abstractmethod
     async def chat(self, payload: dict[str, Any]) -> dict[str, Any]: ...
     @abstractmethod
     async def list_models(self) -> list[dict[str, Any]]: ...
 
 class CloudflareWorkersAIProvider(InferenceProvider):
+    supports_streaming = True
     def __init__(self) -> None:
         self.account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
         self.api_token = os.environ["CLOUDFLARE_API_TOKEN"]
@@ -25,6 +31,40 @@ class CloudflareWorkersAIProvider(InferenceProvider):
             result = response.json()
         result["model"] = self.model
         return result
+
+    async def stream_chat(self, payload: dict[str, Any]) -> AsyncIterator[bytes]:
+        body = dict(payload)
+        body["model"] = self.model
+        body["stream"] = True
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "text/event-stream",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=15)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=body,
+                ) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes():
+                        if chunk:
+                            yield chunk
+        except httpx.HTTPStatusError as exc:
+            message = "Inference provider quota/rate limit reached" if exc.response.status_code == 429 else f"Inference provider returned HTTP {exc.response.status_code}"
+            error = {"error": {"message": message, "type": "provider_error", "code": exc.response.status_code}}
+            yield f"data: {__import__('json').dumps(error)}\\n\\n".encode()
+            yield b"data: [DONE]\\n\\n"
+        except httpx.TimeoutException:
+            error = {"error": {"message": "Inference provider timed out", "type": "timeout_error"}}
+            yield f"data: {__import__('json').dumps(error)}\\n\\n".encode()
+            yield b"data: [DONE]\\n\\n"
+        except httpx.HTTPError:
+            error = {"error": {"message": "Could not reach inference provider", "type": "provider_connection_error"}}
+            yield f"data: {__import__('json').dumps(error)}\\n\\n".encode()
+            yield b"data: [DONE]\\n\\n"
 
     async def list_models(self) -> list[dict[str, Any]]:
         return [{"id": self.model, "object": "model", "owned_by": "cloudflare-workers-ai"}]
